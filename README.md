@@ -4,6 +4,8 @@
 
 The **NSL-KDD Feature Extractor** is a Python-based tool designed to process network traffic packets and extract features compliant with the NSL-KDD dataset format. It enables researchers and developers to analyze network traffic and apply machine learning models for intrusion detection, anomaly detection, or other cybersecurity applications.
 
+Dataset used for testing: https://www.kaggle.com/datasets/hassan06/nslkdd/data
+
 ## **Features**
 
 1. **Packet Analysis**
