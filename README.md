@@ -65,13 +65,13 @@ Dataset used for testing: https://www.kaggle.com/datasets/hassan06/nslkdd/data
 ### **Installation**
 
 1. Clone the repository:
-   ```bash
-   git clone <repository_url>
+   ```
+   git clone https://github.com/Ate329/NSL-KDD-feature-extractor.git
    cd nsl-kdd-feature-extractor
    ```
 
 2. Install required dependencies:
-   ```bash
+   ```
    pip install -r requirements.txt
    ```
 
