@@ -264,7 +264,8 @@ class NetworkCapture:
 
     def start_capture(self) -> None:
         print(f"Starting packet capture on interface {self.interface}")
-        scapy.sniff(iface=self.interface, prn=self.process_packet, store=False, timeout=self.timeout,count=1)
+        scapy.sniff(iface=self.interface, prn=self.process_packet, store=False, timeout=360)
+        # print(len(self.connections))
 
     def process_packet(self, packet: scapy.Packet) -> Optional[Dict]:
         # print(packet.json())
