@@ -1,114 +1,102 @@
-import time
-import statistics
-from network_feature_extractor import NetworkFeatureExtractor
+import asyncio
+import json
+import threading
+import websockets
+from network_capture import NetworkCapture
 import scapy.all as scapy
 
 
-class TimedFeatureExtractor(NetworkFeatureExtractor):
-    def __init__(self, *args, **kwargs):
+class WebSocketNetworkCapture(NetworkCapture):
+    def __init__(self, websocket, loop, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.processing_times = []
-        self.total_packets = 0
-        self.start_time = None
-        self.stats_interval = 5  # Print stats every 5 seconds
-        self.last_stats_time = 0
-        self.running = True
+        self.websocket = websocket
+        self.loop = loop
+        self._running = True
 
-    def process_packet(self, packet: scapy.Packet):
-        if not self.running:
-            return
-
-        if self.start_time is None:
-            self.start_time = time.time()
-            self.last_stats_time = self.start_time
-
-        start_process = time.time()
-        features = self.extract_features(packet)
-        end_process = time.time()
-
-        if features:  # Only count packets that were actually processed
-            processing_time = (end_process - start_process) * 1000  # Convert to milliseconds
-            self.processing_times.append(processing_time)
-            self.total_packets += 1
-
-            # Print stats every X seconds
-            current_time = time.time()
-            if current_time - self.last_stats_time >= self.stats_interval:
-                self.print_stats()
-                self.last_stats_time = current_time
-
-        return features
-
-    def print_stats(self):
-        if not self.processing_times:
-            return
-
-        current_time = time.time()
-        elapsed_time = current_time - self.start_time
-        
-        # Calculate statistics
-        avg_time = statistics.mean(self.processing_times)
-        max_time = max(self.processing_times)
-        min_time = min(self.processing_times)
-        packets_per_second = self.total_packets / elapsed_time
-        
-        print("\n=== Performance Statistics ===")
-        print(f"Total packets processed: {self.total_packets}")
-        print(f"Total elapsed time: {elapsed_time:.2f} seconds")
-        print(f"Average packets/second: {packets_per_second:.2f}")
-        print(f"Average processing time: {avg_time:.3f}ms")
-        print(f"Maximum processing time: {max_time:.3f}ms")
-        print(f"Minimum processing time: {min_time:.3f}ms")
-        print("===========================\n")
-
-    def start_capture(self, duration=None):
-        """
-        Start packet capture with optional duration
-        Args:
-            duration: Number of seconds to capture. If None, captures until interrupted
-        """
-        self.running = True
-        print(f"Starting network capture for {duration if duration else 'unlimited'} seconds...")
-        
+    def start_capture(self) -> None:
+        print(f"Starting packet capture on interface {self.interface}")
         try:
-            scapy.sniff(
-                iface=self.interface,
-                prn=self.process_packet,
-                store=False,
-                timeout=duration,
-                stop_filter=lambda _: not self.running
-            )
+            scapy.sniff(iface=self.interface,
+                        prn=self.process_packet, store=False)
+        except Exception as e:
+            print(f"Capture error: {e}")
+            self._running = False
+
+    def process_packet(self, packet: scapy.Packet) -> None:
+        if not self._running:
+            return
+
+        features = self.extract_features(packet)
+        if features:
+            # Schedule the coroutine on the event loop
+            asyncio.run_coroutine_threadsafe(
+                self.send_packet(features), self.loop)
+
+    async def send_packet(self, features: dict) -> None:
+        try:
+            await self.websocket.send(json.dumps(features))
+            # print("Packet sent successfully")
+        except Exception as e:
+            print(f"Failed to send packet: {e}")
+            self._running = False
+
+
+def start_capture_thread(capture: WebSocketNetworkCapture) -> threading.Thread:
+    # Run start_capture in a separate thread
+    thread = threading.Thread(target=capture.start_capture)
+    thread.daemon = True
+    thread.start()
+    return thread
+
+
+async def connect_websocket():
+    uri = "ws://localhost:8000/ws"
+    retry_delay = 5  # seconds between retries
+    attempt = 1
+
+    while True:
+        try:
+            print(f"Attempting to connect to backend (attempt {attempt})...")
+            async with websockets.connect(uri) as websocket:
+                print("Connected to backend WebSocket successfully!")
+
+                # Get the current event loop
+                loop = asyncio.get_running_loop()
+
+                # Initialize capture with websocket and loop
+                capture = WebSocketNetworkCapture(websocket, loop)
+                capture_thread = start_capture_thread(capture)
+
+                # Keep the connection alive
+                # while capture._running:
+                #     try:
+                #         await websocket.ping()
+                #         await asyncio.sleep(1)
+                #     except:
+                #         break
+
+                print("Capture stopped, reconnecting...")
+
+        except (websockets.exceptions.WebSocketException, ConnectionRefusedError) as e:
+            print(f"Connection attempt {attempt} failed: {str(e)}")
+            print(f"Retrying in {retry_delay} seconds...")
+            await asyncio.sleep(retry_delay)
+            attempt += 1
         except KeyboardInterrupt:
-            self.running = False
-            print("\nCapture stopped by user")
-        
-        self.print_final_stats()
+            print("\nProgram terminated by user")
+            return
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            print(f"Retrying in {retry_delay} seconds...")
+            await asyncio.sleep(retry_delay)
+            attempt += 1
 
-    def stop_capture(self):
-        """Stop the packet capture"""
-        self.running = False
 
-    def print_final_stats(self):
-        if self.processing_times:
-            print("\n=== Final Statistics ===")
-            print(f"Total packets processed: {self.total_packets}")
-            print(f"Average processing time: {statistics.mean(self.processing_times):.3f}ms")
-            print(f"Maximum processing time: {max(self.processing_times):.3f}ms")
-            print(f"Minimum processing time: {min(self.processing_times):.3f}ms")
-            print("=====================")
-        else:
-            print("\nNo packets were processed")
-
-def main():
-    try:
-        # Create extractor with 30-second capture duration
-        extractor = TimedFeatureExtractor()
-        
-        # Start capture for 30 seconds
-        extractor.start_capture(duration=2)
-        
-    except Exception as e:
-        print(f"Error occurred: {e}")
+async def main():
+    await connect_websocket()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user")
