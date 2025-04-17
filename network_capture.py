@@ -158,10 +158,12 @@ class NetworkCapture:
         self._update_connection(conn, packet, current_time)
         self._update_host_stats(ip.src, ip.dst, getattr(transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
 
-        return self._extract_features_dict(ip, transport, conn)
+        return self._extract_features_dict(packet, ip, transport, conn)
 
-    def _extract_features_dict(self, ip: IP, transport, conn: Connection) -> Dict:
+    def _extract_features_dict(self, packet: scapy.Packet, ip: IP, transport, conn: Connection) -> Dict:
         return {
+            'timestamp': packet.time,  # packet capture timestamp
+            'rawBytes': bytes(packet).hex(),  # raw packet bytes as hex string
             'duration': conn.last_time - conn.start_time,
             'protocol_type': self._get_protocol_type(ip.proto),
             'service': self._get_service(transport.dport),

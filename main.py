@@ -50,7 +50,7 @@ def start_capture_thread(capture: WebSocketNetworkCapture) -> threading.Thread:
 
 
 async def connect_websocket():
-    uri = "ws://localhost:8000/ws"
+    uri = "ws://127.0.0.1:8000/ws"
     retry_delay = 5  # seconds between retries
     attempt = 1
 
@@ -68,12 +68,12 @@ async def connect_websocket():
                 capture_thread = start_capture_thread(capture)
 
                 # Keep the connection alive
-                # while capture._running:
-                #     try:
-                #         await websocket.ping()
-                #         await asyncio.sleep(1)
-                #     except:
-                #         break
+                while capture._running:
+                    try:
+                        await websocket.ping()
+                        await asyncio.sleep(1)
+                    except:
+                        break
 
                 print("Capture stopped, reconnecting...")
 
