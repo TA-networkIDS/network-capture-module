@@ -50,7 +50,7 @@ def start_capture_thread(capture: WebSocketNetworkCapture) -> threading.Thread:
 
 
 async def connect_websocket():
-    uri = "ws://127.0.0.1:8000/ws"
+    uri = "ws://127.0.0.1:8888/ws"
     retry_delay = 5  # seconds between retries
     attempt = 1
 
