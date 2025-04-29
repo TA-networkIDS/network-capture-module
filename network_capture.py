@@ -30,6 +30,7 @@ class Connection:
     diff_host_services: Set[int] = field(default_factory=set)
     flags: List[str] = field(default_factory=list)
 
+
 @dataclass
 class HostStats:
     count: int = 0
@@ -45,6 +46,7 @@ class HostStats:
     last_port: int = 0
     connections: deque = field(default_factory=lambda: deque(maxlen=100))
 
+
 class NetworkCapture:
     __slots__ = ('interface', 'timeout', 'connections', 'host_stats',
                  'recent_connections', 'two_second_connections', 'detect_internal')
@@ -58,7 +60,7 @@ class NetworkCapture:
 
     PROTOCOL_TYPES = {6: 'tcp', 17: 'udp', 1: 'icmp'}
 
-    def __init__(self, interface: str = scapy.conf.iface, timeout: int = 60, detect_internal: bool = False):
+    def __init__(self, interface: str = scapy.conf.iface, timeout: int = None, detect_internal: bool = False):
         self.interface = interface
         self.timeout = timeout
         self.connections: Dict[Tuple, Connection] = defaultdict(Connection)
@@ -82,7 +84,7 @@ class NetworkCapture:
         if IP in packet:
             if not self.detect_internal and self._is_internal_traffic(packet):
                 return None
-            
+
             if TCP in packet or UDP in packet or ICMP in packet:
                 return self._extract_ip_features(packet)
         return None
@@ -97,24 +99,28 @@ class NetworkCapture:
         conn.last_time = current_time
         conn.src_bytes += len(packet)
         conn.dst_bytes += len(packet.payload)
-        
+
         self._update_two_second_stats(conn)
         self._update_connection_services(conn, packet)
         self._update_flags(conn, packet)
 
     def _update_two_second_stats(self, conn: Connection) -> None:
         current_time = time.time()
-        self.two_second_connections = [(c, t) for c, t in self.two_second_connections if current_time - t <= 2]
+        self.two_second_connections = [
+            (c, t) for c, t in self.two_second_connections if current_time - t <= 2]
         self.two_second_connections.append((conn, current_time))
 
-        conn.count = sum(1 for c, _ in self.two_second_connections if c == conn)
-        conn.srv_count = sum(1 for c, _ in self.two_second_connections if c.same_srv_connections == conn.same_srv_connections)
+        conn.count = sum(
+            1 for c, _ in self.two_second_connections if c == conn)
+        conn.srv_count = sum(
+            1 for c, _ in self.two_second_connections if c.same_srv_connections == conn.same_srv_connections)
 
     def _update_connection_services(self, conn: Connection, packet: scapy.Packet) -> None:
         if TCP in packet or UDP in packet:
             transport = packet[TCP] if TCP in packet else packet[UDP]
             if transport.dport == transport.sport:
-                conn.same_srv_connections.append((packet[IP].src, packet[IP].dst, transport.sport, transport.dport))
+                conn.same_srv_connections.append(
+                    (packet[IP].src, packet[IP].dst, transport.sport, transport.dport))
             else:
                 conn.diff_host_services.add(transport.dport)
 
@@ -130,13 +136,18 @@ class NetworkCapture:
         host_stats.last_port = dst_port
 
         recent_connections = list(self.recent_connections)
-        recent_connections.append((src_ip, dst_ip, src_port, dst_port, proto, time.time()))
+        recent_connections.append(
+            (src_ip, dst_ip, src_port, dst_port, proto, time.time()))
 
         if recent_connections:
-            host_stats.same_srv_rate = sum(1 for conn in recent_connections if conn[3] == dst_port) / len(recent_connections)
-            host_stats.diff_srv_rate = sum(1 for conn in recent_connections if conn[3] != dst_port) / len(recent_connections)
-            host_stats.same_src_port_rate = sum(1 for conn in recent_connections if conn[2] == src_port) / len(recent_connections)
-            host_stats.srv_diff_host_rate = sum(1 for conn in recent_connections if conn[1] != dst_ip) / len(recent_connections)
+            host_stats.same_srv_rate = sum(
+                1 for conn in recent_connections if conn[3] == dst_port) / len(recent_connections)
+            host_stats.diff_srv_rate = sum(
+                1 for conn in recent_connections if conn[3] != dst_port) / len(recent_connections)
+            host_stats.same_src_port_rate = sum(
+                1 for conn in recent_connections if conn[2] == src_port) / len(recent_connections)
+            host_stats.srv_diff_host_rate = sum(
+                1 for conn in recent_connections if conn[1] != dst_ip) / len(recent_connections)
             host_stats.serror_rate = sum(1 for conn in recent_connections if self._is_serror(
                 self.connections[(conn[0], conn[1], conn[2], conn[3], conn[4])])) / len(recent_connections)
             host_stats.srv_serror_rate = sum(1 for conn in recent_connections if self._is_serror(
@@ -150,13 +161,15 @@ class NetworkCapture:
 
     def _extract_ip_features(self, packet: scapy.Packet) -> Dict:
         ip = packet[IP]
-        transport = packet.getlayer(TCP) or packet.getlayer(UDP) or packet.getlayer(ICMP)
+        transport = packet.getlayer(TCP) or packet.getlayer(
+            UDP) or packet.getlayer(ICMP)
         conn_key = self._get_connection_key(ip, transport)
         conn = self.connections[conn_key]
         current_time = time.time()
 
         self._update_connection(conn, packet, current_time)
-        self._update_host_stats(ip.src, ip.dst, getattr(transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
+        self._update_host_stats(ip.src, ip.dst, getattr(
+            transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
 
         return self._extract_features_dict(packet, ip, transport, conn)
 
@@ -166,7 +179,9 @@ class NetworkCapture:
             'rawBytes': bytes(packet).hex(),  # raw packet bytes as hex string
             'duration': conn.last_time - conn.start_time,
             'protocol_type': self._get_protocol_type(ip.proto),
-            'service': self._get_service(transport.dport),
+            # 'service': self._get_service(transport.dport),
+            # Safe access
+            'service': self._get_service(getattr(transport, 'dport', 0)),
             'flag': self._get_flag(transport),
             'src_bytes': conn.src_bytes,
             'dst_bytes': conn.dst_bytes,
@@ -174,7 +189,7 @@ class NetworkCapture:
             'wrong_fragment': self._get_wrong_fragment(ip),
             'urgent': self._get_urgent(transport),
             # count use as the number of packets that were processed in 2 seconds window.
-            'count': conn.count, 
+            'count': conn.count,
             'srv_count': conn.srv_count,
             'serror_rate': self._calculate_rate(conn, self._is_serror),
             'srv_serror_rate': self._calculate_srv_rate(conn, self._is_serror),
@@ -266,7 +281,8 @@ class NetworkCapture:
 
     def start_capture(self) -> None:
         print(f"Starting packet capture on interface {self.interface}")
-        scapy.sniff(iface=self.interface, prn=self.process_packet, store=False, timeout=360)
+        scapy.sniff(iface=self.interface, prn=self.process_packet,
+                    store=False, timeout=360)
         # print(len(self.connections))
 
     def process_packet(self, packet: scapy.Packet) -> Optional[Dict]:
@@ -275,26 +291,28 @@ class NetworkCapture:
 
     def start_capture_2s(self) -> None:
         print(f"Starting packet capture on interface {self.interface}")
-        
+
         start_time = time.time()
         packets = []
-        
+
         # Capture packets for 2 seconds
         packets = scapy.sniff(iface=self.interface, timeout=2)
-        
+
         # Process all captured packets and measure time
         processing_start = time.time()
         for packet in packets:
             self.process_packet(packet)
         processing_end = time.time()
-        
+
         total_packets = len(packets)
         processing_time = processing_end - processing_start
-        
+
         print(f"\nNetworkCapture Statistics:")
         print(f"Total packets captured in 2 seconds: {total_packets}")
         print(f"Total processing time: {processing_time:.4f} seconds")
-        print(f"Average processing time per packet: {(processing_time/total_packets if total_packets else 0):.6f} seconds")
+        print(
+            f"Average processing time per packet: {(processing_time/total_packets if total_packets else 0):.6f} seconds")
+
 
 if __name__ == "__main__":
     extractor = NetworkCapture()
