@@ -2,11 +2,11 @@ import asyncio
 import json
 import threading
 import websockets
-from network_capture import NetworkCapture
+from network_feature_extractor import NetworkFeatureExtractor
 import scapy.all as scapy
 
 
-class WebSocketNetworkCapture(NetworkCapture):
+class WebSocketNetworkCapture(NetworkFeatureExtractor):
     def __init__(self, websocket, loop, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.websocket = websocket
@@ -50,7 +50,7 @@ def start_capture_thread(capture: WebSocketNetworkCapture) -> threading.Thread:
 
 
 async def connect_websocket():
-    uri = "ws://127.0.0.1:8888/ws"
+    uri = "ws://152.118.201.210:8888/ws"
     retry_delay = 5  # seconds between retries
     attempt = 1
 

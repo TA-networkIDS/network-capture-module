@@ -64,7 +64,8 @@ class HostStats:
 
 class NetworkFeatureExtractor:
     __slots__ = ('interface', 'timeout', 'connections', 'host_stats',
-                 'recent_connections', 'two_second_connections', 'detect_internal')
+                 'recent_connections', 'two_second_connections', 'detect_internal',
+                 'output_file', 'attack_ips')
 
     COMMON_PORTS = {
         80: 'http', 443: 'https', 22: 'ssh', 21: 'ftp', 20: 'ftp_data',
@@ -74,7 +75,7 @@ class NetworkFeatureExtractor:
 
     PROTOCOL_TYPES = {6: 'tcp', 17: 'udp', 1: 'icmp'}
 
-    def __init__(self, interface: str = scapy.conf.iface, timeout: int = 60, detect_internal: bool = False):
+    def __init__(self, interface: str = scapy.conf.iface, timeout: int = None, detect_internal: bool = True):
         self.interface = interface
         self.timeout = timeout
         self.connections: Dict[Tuple, Connection] = defaultdict(Connection)
@@ -82,7 +83,7 @@ class NetworkFeatureExtractor:
         self.recent_connections: deque = deque(maxlen=100)
         self.two_second_connections: List[Tuple[Connection, float]] = []
         self.detect_internal = detect_internal
-    
+
     def _is_internal_traffic(self, packet: scapy.Packet) -> bool:
         if IP in packet:
             src_ip = packet[IP].src
@@ -92,32 +93,29 @@ class NetworkFeatureExtractor:
 
     @staticmethod
     def _is_internal_ip(ip: str) -> bool:
-        return ip.startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', 
-                            '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', 
-                            '172.28.', '172.29.', '172.30.', '172.31.', '192.168.'))
-        
+        return ip.startswith(('10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.',
+                              '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.',
+                              '172.28.', '172.29.', '172.30.', '172.31.', '192.168.'))
+
     def extract_features(self, packet: scapy.Packet) -> Optional[Dict]:
-        if ARP in packet:
-            # Handle ARP packets
-            return self._extract_arp_features(packet)
-        elif IP in packet:
+        if IP in packet:
             if not self.detect_internal and self._is_internal_traffic(packet):
                 return None
-            
+
             if TCP in packet or UDP in packet or ICMP in packet:
                 return self._extract_ip_features(packet)
-        
+
         # If it's not an ARP or IP packet, return None
         return None
 
-    def _extract_arp_features(self, packet: scapy.Packet) -> Dict:
-        return {
-            'protocol_type': 'arp',
-            'src_ip': packet[ARP].psrc,
-            'dst_ip': packet[ARP].pdst,
-            'operation': 'request' if packet[ARP].op == 1 else 'reply',
-            'service': 'none'  # Add a default service for ARP packets
-        }
+    # def _extract_arp_features(self, packet: scapy.Packet) -> Dict:
+    #     return {
+    #         'protocol_type': 'arp',
+    #         'src_ip': packet[ARP].psrc,
+    #         'dst_ip': packet[ARP].pdst,
+    #         'operation': 'request' if packet[ARP].op == 1 else 'reply',
+    #         'service': 'none'  # Add a default service for ARP packets
+    #     }
 
     def _extract_ip_features(self, packet: scapy.Packet) -> Dict:
         ip = packet[IP]
@@ -284,7 +282,9 @@ class NetworkFeatureExtractor:
         return {
             'duration': conn.last_time - conn.start_time,
             'protocol_type': self._get_protocol_type(ip.proto),
-            'service': self._get_service(transport.dport),
+            # Safe access
+            'service': self._get_service(getattr(transport, 'dport', 0)),
+            # 'service': self._get_service(transport.dport),
             'flag': self._get_flag(transport),
             'src_bytes': conn.src_bytes,
             'dst_bytes': conn.dst_bytes,
@@ -433,28 +433,6 @@ class NetworkFeatureExtractor:
         # comment return to disable print
         return features
 
-    def start_capture_2s(self) -> None:
-        print(f"Starting packet capture on interface {self.interface}")
-        
-        start_time = time.time()
-        packets = []
-        
-        # Capture packets for 2 seconds
-        packets = scapy.sniff(iface=self.interface, timeout=2)
-        
-        # Process all captured packets and measure time
-        processing_start = time.time()
-        for packet in packets:
-            self.process_packet(packet)
-        processing_end = time.time()
-        
-        total_packets = len(packets)
-        processing_time = processing_end - processing_start
-        
-        print(f"\nNetworkFeatureExtractor Statistics:")
-        print(f"Total packets captured in 2 seconds: {total_packets}")
-        print(f"Total processing time: {processing_time:.4f} seconds")
-        print(f"Average processing time per packet: {(processing_time/total_packets if total_packets else 0):.6f} seconds")
 
 if __name__ == "__main__":
     extractor = NetworkFeatureExtractor()
