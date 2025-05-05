@@ -130,8 +130,10 @@ class NetworkFeatureExtractor:
         self._update_connection(conn, packet, current_time)
         self._update_host_stats(ip.src, ip.dst, getattr(
             transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
+        timestamp = packet.time
+        rawBytes = bytes(packet).hex()
 
-        return self._extract_features_dict(ip, transport, conn, conn_key)
+        return self._extract_features_dict(timestamp, rawBytes, ip, transport, conn, conn_key)
 
     def _get_connection_key(self, ip: IP, transport) -> Tuple:
         return (ip.src, ip.dst, getattr(transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
@@ -278,8 +280,10 @@ class NetworkFeatureExtractor:
 
         self.recent_connections = deque(recent_connections, maxlen=100)
 
-    def _extract_features_dict(self, ip: IP, transport, conn: Connection, conn_key: Tuple) -> Dict:
+    def _extract_features_dict(self, timestamp, rawBytes, ip: IP, transport, conn: Connection, conn_key: Tuple) -> Dict:
         return {
+            'timestamp': timestamp,  # packet capture timestamp
+            'rawBytes': rawBytes,  # raw packet bytes as hex string
             'duration': conn.last_time - conn.start_time,
             'protocol_type': self._get_protocol_type(ip.proto),
             # Safe access
