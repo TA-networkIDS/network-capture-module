@@ -1,102 +1,98 @@
-import asyncio
 import json
-import threading
-import websockets
 from network_feature_extractor import NetworkFeatureExtractor
 import scapy.all as scapy
+import pika
 
 
-class WebSocketNetworkCapture(NetworkFeatureExtractor):
-    def __init__(self, websocket, loop, *args, **kwargs):
+class RabbitMQInterface:
+    def __init__(self, user: str = "guest", password: str = "guest", host: str = "localhost", port: int = 5672, queue: str = "network-capture"):
+        # self.user = os.getenv('RABBITMQ_USER', 'guest')
+        # self.password = os.getenv('RABBITMQ_PASSWORD', 'guest')
+        # self.host = os.getenv('RABBITMQ_HOST', 'localhost')
+        # self.port = int(os.getenv('RABBITMQ_PORT', 5672))
+        self.user = user
+        self.password = password
+        self.host = host
+        self.port = port
+        self.connection = None
+        self.channel = None
+        self.queue_name = queue
+        self.connect()
+
+    def connect(self):
+        """Connect to RabbitMQ and check the exchange."""
+        parameters = pika.ConnectionParameters(
+            host=self.host, port=self.port)
+        self.connection = pika.BlockingConnection(parameters)
+        self.channel = self.connection.channel()
+        self.channel.queue_declare(queue=self.queue_name, durable=True)
+
+    def close(self):
+        """Close RabbitMQ connection."""
+        try:
+            if self.connection and not self.connection.is_closed:
+                self.connection.close()
+        except Exception as e:
+            print(f"Error closing connection: {e}")
+
+    def publish(self, message):
+        """Publish message to RabbitMQ with retry mechanism."""
+        max_retries = 3
+
+        for attempt in range(max_retries):
+            try:
+                if not self.connection or self.connection.is_closed:
+                    self.reconnect()
+
+                self.channel.basic_publish(
+                    exchange='',
+                    routing_key=self.queue_name,
+                    body=message,
+                    properties=pika.BasicProperties(
+                        delivery_mode=2,  # make message persistent
+                        content_type='application/json',
+                    )
+                )
+                return True
+            except Exception as e:
+                print(f"Publish attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    continue
+                else:
+                    print("Max retries reached, giving up")
+                    return False
+
+
+class NetworkCaptureModule(NetworkFeatureExtractor):
+    def __init__(self, rabbitmq: RabbitMQInterface, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.websocket = websocket
-        self.loop = loop
-        self._running = True
+        self.rabbitmq = rabbitmq
+        # packets that failed to sent
+        self._packets_failed = 0
 
     def start_capture(self) -> None:
         print(f"Starting packet capture on interface {self.interface}")
         try:
-            scapy.sniff(iface=self.interface,
+            scapy.sniff(iface=self.interface, filter="tcp or udp or icmp",
                         prn=self.process_packet, store=False)
         except Exception as e:
             print(f"Capture error: {e}")
-            self._running = False
 
     def process_packet(self, packet: scapy.Packet) -> None:
-        if not self._running:
-            return
-
+        """extract features from packet and send to RabbitMQ"""
         features = self.extract_features(packet)
         if features:
-            # Schedule the coroutine on the event loop
-            asyncio.run_coroutine_threadsafe(
-                self.send_packet(features), self.loop)
-
-    async def send_packet(self, features: dict) -> None:
-        try:
-            await self.websocket.send(json.dumps(features))
-            # print("Packet sent successfully")
-        except Exception as e:
-            print(f"Failed to send packet: {e}")
-            self._running = False
+            message = json.dumps(features)
+            if not self.rabbitmq.publish(message):
+                self._packets_failed += 1
+                print("Failed to send packet")
 
 
-def start_capture_thread(capture: WebSocketNetworkCapture) -> threading.Thread:
-    # Run start_capture in a separate thread
-    thread = threading.Thread(target=capture.start_capture)
-    thread.daemon = True
-    thread.start()
-    return thread
+def main():
+    rabbitMQ = RabbitMQInterface(queue="network-capture-1")
+    network_capture = NetworkCaptureModule(rabbitMQ)
+    network_capture.start_capture()
 
-
-async def connect_websocket():
-    uri = "ws://152.118.201.210:8888/ws"
-    retry_delay = 5  # seconds between retries
-    attempt = 1
-
-    while True:
-        try:
-            print(f"Attempting to connect to backend (attempt {attempt})...")
-            async with websockets.connect(uri) as websocket:
-                print("Connected to backend WebSocket successfully!")
-
-                # Get the current event loop
-                loop = asyncio.get_running_loop()
-
-                # Initialize capture with websocket and loop
-                capture = WebSocketNetworkCapture(websocket, loop)
-                capture_thread = start_capture_thread(capture)
-
-                # Keep the connection alive
-                while capture._running:
-                    try:
-                        await websocket.ping()
-                        await asyncio.sleep(1)
-                    except:
-                        break
-
-                print("Capture stopped, reconnecting...")
-
-        except (websockets.exceptions.WebSocketException, ConnectionRefusedError) as e:
-            print(f"Connection attempt {attempt} failed: {str(e)}")
-            print(f"Retrying in {retry_delay} seconds...")
-            await asyncio.sleep(retry_delay)
-            attempt += 1
-        except KeyboardInterrupt:
-            print("\nProgram terminated by user")
-            return
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            print(f"Retrying in {retry_delay} seconds...")
-            await asyncio.sleep(retry_delay)
-            attempt += 1
-
-
-async def main():
-    await connect_websocket()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nProgram terminated by user")
+    main()
