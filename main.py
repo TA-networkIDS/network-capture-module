@@ -89,7 +89,7 @@ class NetworkCaptureModule(NetworkFeatureExtractor):
 
 
 def main():
-    rabbitMQ = RabbitMQInterface(queue="network-capture-1")
+    rabbitMQ = RabbitMQInterface(queue="ids-queue")
     network_capture = NetworkCaptureModule(rabbitMQ)
     network_capture.start_capture()
 

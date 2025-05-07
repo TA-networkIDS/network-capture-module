@@ -211,7 +211,8 @@ class NetworkFeatureExtractor:
                 return 1
 
         elif DNS in packet:  # DNS traffic
-            if packet[DNS].qr == 0:  # DNS query
+            # QR (query/response)If its value is 0, the message is of request type and if its value is 1, the message is of response type.
+            if packet[DNS].qr == 0 and packet[DNS].qd.qname != None:
                 query = packet[DNS].qd.qname.decode()
                 # Look for potential command and control domain patterns
                 if any(pattern in query for pattern in [".dyndns.", ".no-ip.", ".serveo.net"]):
@@ -221,6 +222,8 @@ class NetworkFeatureExtractor:
 
     def _update_additional_features(self, conn: Connection, packet: scapy.Packet) -> None:
         payload = str(packet.payload)
+        # if TCP in packet:
+        #     print(packet.decode_payload_as("Raw"))
 
         if 'create' in payload or 'touch' in payload or 'mkdir' in payload or 'mkfile' in payload:
             conn.num_file_creations += 1
@@ -402,6 +405,7 @@ class NetworkFeatureExtractor:
     def _get_hot(packet: scapy.Packet, conn: Connection) -> int:
         hot = 0
         payload = str(packet.payload)
+        # print(packet.payload)
 
         sensitive_paths = ['/etc/', '/usr/', '/var/', '/root/']
         sensitive_files = ['/etc/passwd', '/etc/shadow', '.ssh/id_rsa']
