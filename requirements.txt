@@ -2,3 +2,4 @@ scapy
 pandas
 websockets
 pika
+python-dotenv
