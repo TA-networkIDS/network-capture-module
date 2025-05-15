@@ -1,3 +1,4 @@
+from datetime import datetime
 import scapy.all as scapy
 from scapy.layers.inet import IP, TCP, UDP, ICMP
 from scapy.layers.http import HTTP
@@ -108,15 +109,6 @@ class NetworkFeatureExtractor:
         # If it's not an ARP or IP packet, return None
         return None
 
-    # def _extract_arp_features(self, packet: scapy.Packet) -> Dict:
-    #     return {
-    #         'protocol_type': 'arp',
-    #         'src_ip': packet[ARP].psrc,
-    #         'dst_ip': packet[ARP].pdst,
-    #         'operation': 'request' if packet[ARP].op == 1 else 'reply',
-    #         'service': 'none'  # Add a default service for ARP packets
-    #     }
-
     def _extract_ip_features(self, packet: scapy.Packet) -> Dict:
         ip = packet[IP]
         transport = packet.getlayer(TCP) or packet.getlayer(
@@ -130,10 +122,35 @@ class NetworkFeatureExtractor:
         self._update_connection(conn, packet, current_time)
         self._update_host_stats(ip.src, ip.dst, getattr(
             transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
-        timestamp = packet.time
-        rawBytes = bytes(packet).hex()
+        # timestamp = packet.time
+        # rawBytes = bytes(packet).hex()
 
-        return self._extract_features_dict(timestamp, rawBytes, ip, transport, conn, conn_key)
+        # Create additional data for fe and db
+        additional_data = self._extract_additional_data(packet)
+
+        return self._extract_features_dict(additional_data, ip, transport, conn, conn_key)
+
+    def _extract_additional_data(self, packet: scapy.Packet) -> Dict:
+        ip = packet[IP]
+        transport = ip.getlayer(TCP) or ip.getlayer(UDP) or ip.getlayer(ICMP)
+        timestamp = str(packet.time)
+        return {
+            # original packet time
+            "timestamp": timestamp,
+            "formatted_timestamp": datetime.fromtimestamp(packet.time).strftime("%Y-%m-%d, %H:%M:%S.%f"),
+            "protocol_type": self._get_protocol_type(ip.proto),
+            "ipsrc": ip.src,
+            'ipdst': ip.dst,
+            'sport': getattr(transport, 'sport', 0),
+            'dport': getattr(transport, 'dport', 0),
+            'ttl': ip.ttl,
+            'len': ip.len,
+            'flag': self._get_flag(transport),
+            # Dont know if needed or not,and timestamp should be formatted in frontend instead
+            'chksum': ip.chksum,
+            'chksum_transport': getattr(transport, 'chksum', 0),
+            'service': self._get_service(getattr(transport, 'dport', 0)),
+        }
 
     def _get_connection_key(self, ip: IP, transport) -> Tuple:
         return (ip.src, ip.dst, getattr(transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
@@ -283,15 +300,13 @@ class NetworkFeatureExtractor:
 
         self.recent_connections = deque(recent_connections, maxlen=100)
 
-    def _extract_features_dict(self, timestamp, rawBytes, ip: IP, transport, conn: Connection, conn_key: Tuple) -> Dict:
+    def _extract_features_dict(self, additional_data, ip: IP, transport, conn: Connection, conn_key: Tuple) -> Dict:
         return {
-            'timestamp': timestamp,  # packet capture timestamp
-            'rawBytes': rawBytes,  # raw packet bytes as hex string
+            "additional_data": additional_data,
             'duration': conn.last_time - conn.start_time,
             'protocol_type': self._get_protocol_type(ip.proto),
             # Safe access
             'service': self._get_service(getattr(transport, 'dport', 0)),
-            # 'service': self._get_service(transport.dport),
             'flag': self._get_flag(transport),
             'src_bytes': conn.src_bytes,
             'dst_bytes': conn.dst_bytes,
