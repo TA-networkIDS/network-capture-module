@@ -1,15 +1,15 @@
+import os
 import json
 from network_feature_extractor import NetworkFeatureExtractor
 import scapy.all as scapy
 import pika
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class RabbitMQInterface:
     def __init__(self, user: str = "guest", password: str = "guest", host: str = "localhost", port: int = 5672, queue: str = "network-capture"):
-        # self.user = os.getenv('RABBITMQ_USER', 'guest')
-        # self.password = os.getenv('RABBITMQ_PASSWORD', 'guest')
-        # self.host = os.getenv('RABBITMQ_HOST', 'localhost')
-        # self.port = int(os.getenv('RABBITMQ_PORT', 5672))
+
         self.user = user
         self.password = password
         self.host = host
@@ -89,7 +89,13 @@ class NetworkCaptureModule(NetworkFeatureExtractor):
 
 
 def main():
-    rabbitMQ = RabbitMQInterface(queue="ids-queue")
+    q_name = os.getenv("RMQ_QUEUE_NAME")
+    host = os.getenv("RMQ_HOST")
+    port = os.getenv("RMQ_PORT")
+    user = os.getenv("RMQ_USER")
+    password = os.getenv("RMQ_PASSWORD")
+    rabbitMQ = RabbitMQInterface(
+        queue=q_name, host=host, port=port, user=user, password=password)
     network_capture = NetworkCaptureModule(rabbitMQ)
     network_capture.start_capture()
 
