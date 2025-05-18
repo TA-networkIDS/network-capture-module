@@ -1,0 +1,47 @@
+{
+  "type": "batch_update",
+  "pkt_in": 1024,
+  "pkt_out": 2048,
+  "low_count": 2,
+  "med_count": 1,
+  "high_count": 0,
+  "protocols_count": {"TCP": 15, "UDP": 3},
+  "services_count": {"http": 12, "ssh": 6},
+  "top_talkers": {"192.168.1.5": 512, "10.0.0.2": 256},
+  "top_ports": {80: 10, 22: 5},
+  "top_attacked_ports": {22: 3},
+  "top_attackers": {"192.168.1.5": 3},
+  "attack_type_count": {"Dos": 1},
+  "alerts_data": [
+    {
+      "ipsrc": "192.168.1.5",
+      "dport": 22,
+      "formatted_timestamp": "12:38:50",
+      "predicted_class": "Dos",
+      "confidence": 0.92
+    }
+  ],
+  "packets_data": [
+    {
+      "formatted_timestamp": "12:38:50",
+      "ipsrc": "192.168.1.5",
+      "ipdst": "10.200.8.158",
+      "sport": 54321,
+      "dport": 22,
+      "ttl": 64,
+      "chksum": 0xffff,
+      "len": 128,
+      "flag": "SF",
+      "protocol_type": "TCP",
+      "service": "ssh",
+      
+      "chksum_transport": 0xaa55
+    }
+  ]
+}
+checksum gatau butuh apa engga
+alerts_data extend dari packets_data aja,
+jadi tambah field predicted_class sama confidence langsung store db
+
+soo currently the data transfer from a sniffer to this be using ws right, i want to transition it to using rmq, currentluy ive wrote @/app/rmq.py this, also i want to change a bit of the implementation. I want to store statistical data on db (mongodb) and the broadcasted message will be only send alert data other than that it will use regular api endpoint
+

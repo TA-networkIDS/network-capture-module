@@ -1,4 +1,3 @@
-from datetime import datetime
 import scapy.all as scapy
 from scapy.layers.inet import IP, TCP, UDP, ICMP
 from scapy.layers.http import HTTP
@@ -133,22 +132,17 @@ class NetworkFeatureExtractor:
     def _extract_additional_data(self, packet: scapy.Packet) -> Dict:
         ip = packet[IP]
         transport = ip.getlayer(TCP) or ip.getlayer(UDP) or ip.getlayer(ICMP)
-        timestamp = str(packet.time)
+        # timestamp = str(packet.time)
         return {
             # original packet time
-            "timestamp": timestamp,
-            "formatted_timestamp": datetime.fromtimestamp(packet.time).strftime("%Y-%m-%d, %H:%M:%S.%f"),
+            "timestamp": packet.time,
             "protocol_type": self._get_protocol_type(ip.proto),
             "ipsrc": ip.src,
             'ipdst': ip.dst,
             'sport': getattr(transport, 'sport', 0),
             'dport': getattr(transport, 'dport', 0),
-            'ttl': ip.ttl,
             'len': ip.len,
-            'flag': self._get_flag(transport),
             # Dont know if needed or not,and timestamp should be formatted in frontend instead
-            'chksum': ip.chksum,
-            'chksum_transport': getattr(transport, 'chksum', 0),
             'service': self._get_service(getattr(transport, 'dport', 0)),
         }
 
