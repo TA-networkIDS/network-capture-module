@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from network_feature_extractor import NetworkFeatureExtractor
 import scapy.all as scapy
 import pika
@@ -81,6 +82,8 @@ class NetworkCaptureModule(NetworkFeatureExtractor):
     def process_packet(self, packet: scapy.Packet) -> None:
         """extract features from packet and send to RabbitMQ"""
         features = self.extract_features(packet)
+        # Add t1 time, post extract feautures / pre publish
+        features["evaluation_time"]["t1"] = time.time() * 1000
         if features:
             message = json.dumps(features)
             if not self.rabbitmq.publish(message):

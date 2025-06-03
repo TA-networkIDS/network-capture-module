@@ -121,18 +121,22 @@ class NetworkFeatureExtractor:
         self._update_connection(conn, packet, current_time)
         self._update_host_stats(ip.src, ip.dst, getattr(
             transport, 'sport', 0), getattr(transport, 'dport', 0), ip.proto)
-        # timestamp = packet.time
-        # rawBytes = bytes(packet).hex()
 
         # Create additional data for fe and db
         additional_data = self._extract_additional_data(packet)
 
-        return self._extract_features_dict(additional_data, ip, transport, conn, conn_key)
+        extracted_features = self._extract_features_dict(
+            additional_data, ip, transport, conn, conn_key)
+        # Time data for evaluation
+        evaluation_time = {
+            "t0": packet.time * 1000,
+        }
+        extracted_features.update({"evaluation_time": evaluation_time})
+        return extracted_features
 
     def _extract_additional_data(self, packet: scapy.Packet) -> Dict:
         ip = packet[IP]
         transport = ip.getlayer(TCP) or ip.getlayer(UDP) or ip.getlayer(ICMP)
-        # timestamp = str(packet.time)
         return {
             # original packet time
             "timestamp": packet.time,
@@ -142,7 +146,6 @@ class NetworkFeatureExtractor:
             'sport': getattr(transport, 'sport', 0),
             'dport': getattr(transport, 'dport', 0),
             'len': ip.len,
-            # Dont know if needed or not,and timestamp should be formatted in frontend instead
             'service': self._get_service(getattr(transport, 'dport', 0)),
         }
 
